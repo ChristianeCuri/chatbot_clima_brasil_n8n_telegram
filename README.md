@@ -8,8 +8,6 @@ O usuário envia uma mensagem via telegram para o bot com o nome da cidade e rec
 
 **Usuário:** 
 /tempo São Paulo
-OU
-São Paulo
 
 **Bot:**
 ☀️ Clima em São Paulo
