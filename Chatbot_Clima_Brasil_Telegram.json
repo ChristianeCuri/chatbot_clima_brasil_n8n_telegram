@@ -1,0 +1,254 @@
+{
+  "name": "Chatbot Clima Brasil - Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "d431849d-77af-4c8e-96c3-c4336c472a5e",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "clima-bot-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENCIAL_TELEGRAM",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $input.first().json.message;\nconst text = message?.text || '';\nconst chatId = message?.chat?.id;\nconst firstName = message?.chat?.first_name || 'usuário';\n\n// Verifica se a mensagem começa com um comando\nconst temComando = /^\\/?(?:tempo|clima|weather)/i.test(text);\n\n// Extrai a cidade removendo o comando\nconst cidadeBruta = text\n  .replace(/^\\/?(?:tempo|clima|weather)\\s*/i, '')\n  .trim();\n\n// Só considera cidade se vier com comando\nconst cidade = temComando && cidadeBruta ? cidadeBruta : null;\n\nreturn [{\n  json: {\n    chatId,\n    firstName,\n    cidade: cidade || null,\n    cidadeQuery: cidade ? `${cidade},BR` : null,\n    textoOriginal: text\n  }\n}];"
+      },
+      "id": "bfea0baa-a8ea-4b9d-a782-c858c72433d5",
+      "name": "Extrair Cidade",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-001",
+              "leftValue": "={{ $json.cidade }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "47b887bb-53eb-4100-89b8-fe20dd673669",
+      "name": "Cidade Informada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={\n  \"q\": \"{{ $('Extrair Cidade').first().json.cidadeQuery }},BR\",\n  \"appid\": \"API_KEY_OPENWEATHERMAP"\",\n  \"units\": \"metric\",\n  \"lang\": \"pt_br\"\n}",
+        "options": {}
+      },
+      "id": "2f7e1234-3723-4b0c-a4c1-151f9a7a4b61",
+      "name": "Buscar Clima",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const weather = $input.first().json;\nconst cidade = $('Extrair Cidade').first().json.cidade;\nconst chatId = $('Extrair Cidade').first().json.chatId;\n\n// Verificar erro da API\nif (weather.cod !== 200) {\n  return [{\n    json: {\n      chatId,\n      mensagem: `❌ Cidade *${cidade}* não encontrada.\\nVerifique o nome e tente novamente.\\n\\nExemplo: /tempo São Paulo`\n    }\n  }];\n}\n\nconst temp = Math.round(weather.main.temp);\nconst sensacao = Math.round(weather.main.feels_like);\nconst tempMin = Math.round(weather.main.temp_min);\nconst tempMax = Math.round(weather.main.temp_max);\nconst umidade = weather.main.humidity;\nconst descricao = weather.weather[0].description;\nconst vento = (weather.wind.speed * 3.6).toFixed(1);\nconst nomeCidade = weather.name;\n\nconst emoji = temp >= 30 ? '🔥' : temp >= 25 ? '☀️' : temp >= 18 ? '🌤️' : temp >= 10 ? '🌥️' : '🥶';\n\nconst mensagem =\n  `${emoji} *Clima em ${nomeCidade}*\\n\\n` +\n  `🌡️ Temperatura: *${temp}°C*\\n` +\n  `🤔 Sensação térmica: ${sensacao}°C\\n` +\n  `⬇️ Mínima: ${tempMin}°C  |  ⬆️ Máxima: ${tempMax}°C\\n` +\n  `💧 Umidade: ${umidade}%\\n` +\n  `💨 Vento: ${vento} km/h\\n` +\n  `📋 Condição: ${descricao}\\n\\n` +\n  `_Dados fornecidos por OpenWeatherMap_`;\n\nreturn [{ json: { chatId, mensagem } }];"
+      },
+      "id": "3b7bb929-f4a7-4d6a-82ef-6f1b85e9dea3",
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensagem }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "f73154ce-4c7a-4c04-9300-4b048fb258ee",
+      "name": "Enviar Clima",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "webhookId": "853cb2a9-6802-414f-9402-6266f5ab33c4",
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENCIAL_TELEGRAM",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensagem }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "76d6f542-20f6-4450-bf7c-2abc25d5b4a2",
+      "name": "Enviar Ajuda",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        224
+      ],
+      "webhookId": "80a9ee64-2554-4b60-942c-dd038050f075",
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENCIAL_TELEGRAM",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Extrair Cidade').first().json.chatId;\nconst firstName = $('Extrair Cidade').first().json.firstName;\n\nconst mensagem =\n  `👋 Olá, ${firstName}! Eu sou o bot de clima do Brasil!\\n\\n` +\n  `Para consultar a temperatura de uma cidade, envie:\\n\\n` +\n  `📍 /tempo *NomeDaCidade*\\n\\n` +\n  `*Exemplos:*\\n` +\n  `• /tempo São Paulo\\n` +\n  `• /tempo Rio de Janeiro\\n` +\n  `• /tempo Curitiba\\n` +\n  `• /tempo Fortaleza\\n` +\n  `• /tempo Manaus`;\n\nreturn [{ json: { chatId, mensagem } }];"
+      },
+      "id": "3d5bf413-bbce-41df-adc6-6fed34a09754",
+      "name": "Mensagem de Ajuda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        224
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extrair Cidade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Cidade": {
+      "main": [
+        [
+          {
+            "node": "Cidade Informada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cidade Informada?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Clima",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mensagem de Ajuda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Clima": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Clima",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensagem de Ajuda": {
+      "main": [
+        [
+          {
+            "node": "Enviar Ajuda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8b4e3414-9768-42f6-a87e-1db1c081e101",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d54aa4da70fbfee6fc3985ca2df4dc27f9951d0428868fb304532b85fa9d4dfb"
+  },
+  "id": "rRpcpJqV4Vxkq1rQ",
+  "tags": []
+}
