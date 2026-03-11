@@ -1,0 +1,353 @@
+{
+  "name": "workflow-chatbot-telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "5e1bc346-ae3a-47df-b954-aaf6137e03df",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1104,
+        224
+      ],
+      "webhookId": "clima-bot-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_BOT_TOKEN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-chatid",
+              "name": "chatId",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-firstname",
+              "name": "firstName",
+              "value": "={{ $json.message.chat.first_name || 'usuário' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-queue",
+              "name": "queue",
+              "value": "={{ $json.message.text.trim().toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '') }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-temcomando",
+              "name": "temComando",
+              "value": "={{ /^\\/?(?:tempo|clima|weather)/i.test($json.message.text) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "assign-textooriginal",
+              "name": "textoOriginal",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "781c33d2-27c2-4fe8-af13-670f1af588fb",
+      "name": "Extrair Cidade",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -880,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-queue-notempty",
+              "leftValue": "={{ $json.queue }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca645080-4bfd-42aa-826f-ee4224f8e7eb",
+      "name": "Cidade Informada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Extrair Cidade').first().json.queue }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "pt_br"
+            },
+            {
+              "name": "appid",
+              "value": "=OPENWEATHER_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a6a49c9f-3d5a-421d-b944-2543d351833f",
+      "name": "Buscar Clima",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -432,
+        208
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const weather = $input.first().json;\nconst queue = $('Extrair Cidade').first().json.queue;\nconst chatId = $('Extrair Cidade').first().json.chatId;\n\nconst temp = Math.round(weather.main.temp);\nconst sensacao = Math.round(weather.main.feels_like);\nconst tempMin = Math.round(weather.main.temp_min);\nconst tempMax = Math.round(weather.main.temp_max);\nconst umidade = weather.main.humidity;\nconst descricao = weather.weather[0].description;\nconst vento = (weather.wind.speed * 3.6).toFixed(1);\nconst nomeCidade = weather.name;\n\nconst emoji = temp >= 30 ? '🔥' : temp >= 25 ? '☀️' : temp >= 18 ? '🌤️' : temp >= 10 ? '🌥️' : '🥶';\n\nconst mensagem =\n  `${emoji} *Clima em ${nomeCidade}*\\n\\n` +\n  `🌡️ Temperatura: *${temp}°C*\\n` +\n  `🤔 Sensação térmica: ${sensacao}°C\\n` +\n  `⬇️ Mínima: ${tempMin}°C  |  ⬆️ Máxima: ${tempMax}°C\\n` +\n  `💧 Umidade: ${umidade}%\\n` +\n  `💨 Vento: ${vento} km/h\\n` +\n  `📋 Condição: ${descricao}\\n\\n` +\n  `_Dados fornecidos por OpenWeatherMap_`;\n\nreturn [{ json: { chatId, mensagem } }];"
+      },
+      "id": "ddba90c9-82ec-4a72-84e7-bde4eb566ed0",
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Extrair Cidade').first().json.chatId;\nconst queue = $('Extrair Cidade').first().json.queue;\n\nconst mensagem = `👋 Olá! Eu sou o bot de informações sobre o clima!\n❌ A Cidade que você enviou não foi encontrada.\n📍 Para consultar o clima, envie o nome da cidade (ex.: São Paulo).`;\n\nreturn [{ json: { chatId, mensagem } }];"
+      },
+      "id": "be511dd2-4ce9-4d18-a757-23bcab921eb8",
+      "name": "Mensagem Erro API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensagem }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "bdbe759a-7895-44c5-8fb6-d1499d7aaa8b",
+      "name": "Enviar Clima",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        176,
+        16
+      ],
+      "webhookId": "0d2903ef-2864-4c13-a3f3-19f021c9f31e",
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_BOT_TOKEN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensagem }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "f3c690a0-de28-4afb-96e6-cba65ae2b7e3",
+      "name": "Enviar Erro",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        176,
+        352
+      ],
+      "webhookId": "8d61f973-e14f-4f83-8dc5-ca9aeb09b819",
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_BOT_TOKEN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-http-ok",
+              "leftValue": "={{ $json.cod }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1f3707c0-27df-4606-9008-ecf03c2fa645",
+      "name": "Resposta Válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        32
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extrair Cidade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Cidade": {
+      "main": [
+        [
+          {
+            "node": "Cidade Informada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cidade Informada?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Clima",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buscar Clima": {
+      "main": [
+        [
+          {
+            "node": "Resposta Válida?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mensagem Erro API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Clima",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensagem Erro API": {
+      "main": [
+        [
+          {
+            "node": "Enviar Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta Válida?": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "bf23a401-7dc7-4455-8cfa-a0676b06d105",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d54aa4da70fbfee6fc3985ca2df4dc27f9951d0428868fb304532b85fa9d4dfb"
+  },
+  "id": "LJP7HCDsI5e9tvqK",
+  "tags": []
+}
